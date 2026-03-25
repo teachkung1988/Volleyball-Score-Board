@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>排球直播比分板</title>
+  <style>
+    :root {
+      --bg: rgba(20, 24, 32, 0.92);
+      --panel: #121722;
+      --line: rgba(255,255,255,0.12);
+      --text: #f5f7fb;
+      --muted: #b9c2d0;
+      --accent-a: #f6b300;
+      --accent-b: #1f6fff;
+      --ok: #35c759;
+      --danger: #ff453a;
+      --shadow: 0 10px 30px rgba(0,0,0,.28);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+      color: var(--text);
+      background: #0b0f16;
+    }
+    body.overlay {
+      background: transparent;
+      overflow: hidden;
+    }
+    .app {
+      min-height: 100vh;
+      display: grid;
+      gap: 16px;
+      padding: 16px;
+    }
+    body.overlay .app {
+      min-height: auto;
+      padding: 0;
+      display: block;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    /* Overlay scoreboard */
+    .scoreboard {
+      width: min(920px, calc(100vw - 24px));
+      background: transparent;
+    }
+    body.overlay .scoreboard {
+      width: min(860px, 96vw);
+      margin: 12px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 28px 1fr 78px 104px;
+      align-items: stretch;
+      min-height: 86px;
+      background: var(--bg);
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      backdrop-filter: blur(3px);
+    }
+    .row:last-child { border-bottom: none; }
+    .team-color.a { background: var(--accent-a); }
+    .team-color.b { background: var(--accent-b); }
+    .team-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 0 18px;
+      min-width: 0;
+    }
+    .team-name {
+      font-weight: 800;
+      font-size: clamp(24px, 3vw, 40px);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: .5px;
+    }
+    .serve-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      opacity: 0;
+      transform: scale(.7);
+      box-shadow: 0 0 0 4px rgba(255,255,255,.16);
+      transition: .15s ease;
+      flex: 0 0 auto;
+    }
+    .serve-dot.on { opacity: 1; transform: scale(1); }
+    .set-box, .point-box {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      line-height: 1;
+      border-left: 1px solid rgba(255,255,255,.09);
+    }
+    .set-box {
+      background: rgba(255,255,255,.06);
+      font-size: clamp(34px, 4.4vw, 56px);
+    }
+    .point-box {
+      background: rgba(255,255,255,.96);
+      color: #000;
+      font-size: clamp(42px, 5vw, 62px);
+    }
+    .header-note {
+      display: none;
+    }
+
+    /* Control panel */
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(320px, 920px);
+      justify-content: center;
+      gap: 16px;
+    }
+    .controls {
+      padding: 18px;
+    }
+    .controls h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+    }
+    .desc {
+      color: var(--muted);
+      margin: 0 0 16px;
+      line-height: 1.5;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .section {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+    label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    input, select {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #0d1320;
+      color: var(--text);
+      outline: none;
+      font-size: 15px;
+    }
+    .team-panel {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      overflow: hidden;
+      background: #0d1320;
+    }
+    .team-head {
+      padding: 12px 14px;
+      font-weight: 800;
+      color: #000;
+    }
+    .team-head.a { background: var(--accent-a); }
+    .team-head.b { background: var(--accent-b); color: #fff; }
+    .team-body { padding: 14px; }
+    .btn-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 10px;
+    }
+    button {
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 15px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .primary { background: #fff; color: #000; }
+    .ghost { background: #1a2233; color: var(--text); border: 1px solid var(--line); }
+    .good { background: var(--ok); color: #04130a; }
+    .bad { background: var(--danger); color: #fff; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .linkbox {
+      margin-top: 10px;
+      padding: 12px;
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      word-break: break-all;
+      background: rgba(255,255,255,.02);
+    }
+    .tiny {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 8px 10px;
+      background: #111827;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .status {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .hidden { display: none !important; }
+
+    @media (max-width: 680px) {
+      .grid-2 { grid-template-columns: 1fr; }
+      .btn-grid { grid-template-columns: repeat(2, 1fr); }
+      .row { grid-template-columns: 18px 1fr 56px 76px; min-height: 66px; }
+      .team-main { padding: 0 10px; gap: 8px; }
+      .team-name { font-size: 20px; }
+      .set-box { font-size: 28px; }
+      .point-box { font-size: 34px; }
+      .serve-dot { width: 12px; height: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="layout">
+      <div class="scoreboard card" id="scoreboard">
+        <div class="row">
+          <div class="team-color a"></div>
+          <div class="team-main">
+            <div class="team-name" id="nameA">中信國際高中</div>
+            <div class="serve-dot" id="serveA"></div>
+          </div>
+          <div class="set-box" id="setsA">0</div>
+          <div class="point-box" id="scoreA">0</div>
+        </div>
+        <div class="row">
+          <div class="team-color b"></div>
+          <div class="team-main">
+            <div class="team-name" id="nameB">福誠B</div>
+            <div class="serve-dot" id="serveB"></div>
+          </div>
+          <div class="set-box" id="setsB">0</div>
+          <div class="point-box" id="scoreB">0</div>
+        </div>
+      </div>
+
+      <div class="card controls" id="controls">
+        <h1>排球直播比分系統</h1>
+        <p class="desc">同一支手機可直接操作；OBS 可用瀏覽器來源顯示。若要兩支手機即時同步，需把這個檔案放到一個公開網址，並接上 Firebase 即時資料庫（我下面有留擴充接口）。</p>
+
+        <div class="grid-2">
+          <div>
+            <label>隊伍 A</label>
+            <input id="inputNameA" value="中信國際高中" />
+          </div>
+          <div>
+            <label>隊伍 B</label>
+            <input id="inputNameB" value="福誠B" />
+          </div>
+        </div>
+
+        <div class="grid-2 section">
+          <div>
+            <label>每局目標分數</label>
+            <select id="targetPoints">
+              <option value="21">21</option>
+              <option value="25" selected>25</option>
+              <option value="15">15</option>
+            </select>
+          </div>
+          <div>
+            <label>決勝局目標分數</label>
+            <select id="finalSetPoints">
+              <option value="15" selected>15</option>
+              <option value="21">21</option>
+              <option value="25">25</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid-2 section">
+          <div class="team-panel">
+            <div class="team-head a">隊伍 A 控制</div>
+            <div class="team-body">
+              <div class="btn-grid">
+                <button class="good" onclick="changeScore('A',1)">+1 分</button>
+                <button class="ghost" onclick="changeScore('A',-1)">-1 分</button>
+                <button class="primary" onclick="addSet('A')">+1 局</button>
+                <button class="ghost" onclick="setServe('A')">發球</button>
+                <button class="ghost" onclick="swapSides()">交換左右</button>
+                <button class="ghost" onclick="resetPointsOnly()">清空本局</button>
+              </div>
+            </div>
+          </div>
+          <div class="team-panel">
+            <div class="team-head b">隊伍 B 控制</div>
+            <div class="team-body">
+              <div class="btn-grid">
+                <button class="good" onclick="changeScore('B',1)">+1 分</button>
+                <button class="ghost" onclick="changeScore('B',-1)">-1 分</button>
+                <button class="primary" onclick="addSet('B')">+1 局</button>
+                <button class="ghost" onclick="setServe('B')">發球</button>
+                <button class="ghost" onclick="undoLast()">復原一步</button>
+                <button class="bad" onclick="resetAll()">全部歸零</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="toolbar">
+            <button class="primary" onclick="applyNames()">套用隊名</button>
+            <button class="ghost" onclick="toggleOverlayOnly()">只顯示比分板</button>
+            <button class="ghost" onclick="copyOverlayLink()">複製 OBS 顯示連結</button>
+            <button class="ghost" onclick="copyControlLink()">複製控制連結</button>
+            <button class="ghost" onclick="downloadState()">匯出比賽 JSON</button>
+          </div>
+          <div class="status">
+            <span class="pill">模式：<span id="modeLabel">控制模式</span></span>
+            <span class="pill">目前局數：<span id="bestOfLabel">一般局 25 / 決勝局 15</span></span>
+          </div>
+          <div class="linkbox" id="linkBox"></div>
+          <p class="tiny">使用方式：OBS 加入「瀏覽器來源」→ 指向 overlay 連結。若你只在同一台設備或同一瀏覽器分頁使用，會自動同步。跨兩支手機要即時同步，需自行上傳到公開網址並接後端。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'volleyball_scoreboard_state_v1';
+    const HISTORY_KEY = 'volleyball_scoreboard_history_v1';
+
+    const defaultState = {
+      teamA: '中信國際高中',
+      teamB: '福誠B',
+      scoreA: 0,
+      scoreB: 0,
+      setsA: 0,
+      setsB: 0,
+      serve: 'A',
+      targetPoints: 25,
+      finalSetPoints: 15,
+      swapped: false,
+      updatedAt: Date.now()
+    };
+
+    function clone(obj) {
+      return JSON.parse(JSON.stringify(obj));
+    }
+
+    function getParams() {
+      const params = new URLSearchParams(location.search);
+      return {
+        mode: params.get('mode') || 'control',
+        transparent: params.get('transparent') === '1' || params.get('mode') === 'overlay'
+      };
+    }
+
+    function getState() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return clone(defaultState);
+      try {
+        return { ...clone(defaultState), ...JSON.parse(raw) };
+      } catch {
+        return clone(defaultState);
+      }
+    }
+
+    function saveHistory(state) {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      let arr = [];
+      try { if (raw) arr = JSON.parse(raw); } catch {}
+      arr.push(state);
+      if (arr.length > 50) arr = arr.slice(arr.length - 50);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(arr));
+    }
+
+    function saveState(nextState, pushHistory=true) {
+      const snapshotBefore = getState();
+      if (pushHistory) saveHistory(snapshotBefore);
+      nextState.updatedAt = Date.now();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+      render();
+    }
+
+    function currentSetTarget(state) {
+      const totalSetsPlayed = state.setsA + state.setsB;
+      return totalSetsPlayed >= 2 ? Number(state.finalSetPoints) : Number(state.targetPoints);
+    }
+
+    function render() {
+      const state = getState();
+      const params = getParams();
+
+      document.getElementById('nameA').textContent = state.teamA;
+      document.getElementById('nameB').textContent = state.teamB;
+      document.getElementById('scoreA').textContent = state.scoreA;
+      document.getElementById('scoreB').textContent = state.scoreB;
+      document.getElementById('setsA').textContent = state.setsA;
+      document.getElementById('setsB').textContent = state.setsB;
+      document.getElementById('serveA').classList.toggle('on', state.serve === 'A');
+      document.getElementById('serveB').classList.toggle('on', state.serve === 'B');
+
+      const controls = document.getElementById('controls');
+      if (params.mode === 'overlay') {
+        document.body.classList.add('overlay');
+        controls.classList.add('hidden');
+        document.getElementById('modeLabel').textContent = '顯示模式';
+      } else {
+        document.body.classList.remove('overlay');
+        controls.classList.remove('hidden');
+        document.getElementById('modeLabel').textContent = '控制模式';
+        document.getElementById('inputNameA').value = state.teamA;
+        document.getElementById('inputNameB').value = state.teamB;
+        document.getElementById('targetPoints').value = String(state.targetPoints);
+        document.getElementById('finalSetPoints').value = String(state.finalSetPoints);
+        document.getElementById('bestOfLabel').textContent = `一般局 ${state.targetPoints} / 決勝局 ${state.finalSetPoints}`;
+      }
+
+      const base = location.origin + location.pathname;
+      const overlayLink = `${base}?mode=overlay&transparent=1`;
+      const controlLink = `${base}?mode=control`;
+      document.getElementById('linkBox').innerHTML = `OBS 顯示連結：<br>${overlayLink}<br><br>控制連結：<br>${controlLink}`;
+    }
+
+    function applyNames() {
+      const state = getState();
+      state.teamA = document.getElementById('inputNameA').value.trim() || '隊伍 A';
+      state.teamB = document.getElementById('inputNameB').value.trim() || '隊伍 B';
+      state.targetPoints = Number(document.getElementById('targetPoints').value);
+      state.finalSetPoints = Number(document.getElementById('finalSetPoints').value);
+      saveState(state);
+    }
+
+    function changeScore(team, delta) {
+      const state = getState();
+      const key = team === 'A' ? 'scoreA' : 'scoreB';
+      state[key] = Math.max(0, Number(state[key]) + delta);
+      saveState(state);
+    }
+
+    function addSet(team) {
+      const state = getState();
+      const key = team === 'A' ? 'setsA' : 'setsB';
+      state[key] = Math.max(0, Number(state[key]) + 1);
+      saveState(state);
+    }
+
+    function setServe(team) {
+      const state = getState();
+      state.serve = team;
+      saveState(state);
+    }
+
+    function resetPointsOnly() {
+      const state = getState();
+      state.scoreA = 0;
+      state.scoreB = 0;
+      saveState(state);
+    }
+
+    function resetAll() {
+      saveState(clone(defaultState));
+    }
+
+    function swapSides() {
+      const state = getState();
+      const swapped = {
+        ...state,
+        teamA: state.teamB,
+        teamB: state.teamA,
+        scoreA: state.scoreB,
+        scoreB: state.scoreA,
+        setsA: state.setsB,
+        setsB: state.setsA,
+        serve: state.serve === 'A' ? 'B' : 'A',
+        swapped: !state.swapped
+      };
+      saveState(swapped);
+    }
+
+    function undoLast() {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (!raw) return;
+      let arr = [];
+      try { arr = JSON.parse(raw); } catch { return; }
+      const prev = arr.pop();
+      if (!prev) return;
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(arr));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(prev));
+      render();
+    }
+
+    function copyText(text) {
+      navigator.clipboard.writeText(text)
+        .then(() => alert('已複製'))
+        .catch(() => alert('無法自動複製，請手動複製連結'));
+    }
+
+    function copyOverlayLink() {
+      const base = location.origin + location.pathname;
+      copyText(`${base}?mode=overlay&transparent=1`);
+    }
+
+    function copyControlLink() {
+      const base = location.origin + location.pathname;
+      copyText(`${base}?mode=control`);
+    }
+
+    function toggleOverlayOnly() {
+      const params = new URLSearchParams(location.search);
+      params.set('mode', 'overlay');
+      params.set('transparent', '1');
+      location.search = params.toString();
+    }
+
+    function downloadState() {
+      const state = getState();
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'volleyball-score-state.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    window.addEventListener('storage', (e) => {
+      if (e.key === STORAGE_KEY) render();
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      if (!localStorage.getItem(STORAGE_KEY)) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultState));
+      }
+      render();
+    });
+  </script>
+</body>
+</html>
